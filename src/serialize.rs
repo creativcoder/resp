@@ -92,12 +92,12 @@ fn buf_encode(value: &Value, buf: &mut Vec<u8>) {
 
 /// A streaming RESP Decoder.
 #[derive(Debug)]
-pub struct Decoder<R> {
+pub struct Decoder<'a, R: 'a> {
     buf_bulk: bool,
-    reader: BufReader<R>,
+    reader: &'a mut BufReader<R>,
 }
 
-impl<R: Read> Decoder<R> {
+impl<'a, R: Read> Decoder<'a, R> {
     /// Creates a Decoder instance with given BufReader for decoding the RESP buffers.
     /// # Examples
     /// ```
@@ -106,10 +106,11 @@ impl<R: Read> Decoder<R> {
     ///
     /// let value = Value::Bulk("Hello".to_string());
     /// let buf = value.encode();
-    /// let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+    /// let mut buf = BufReader::new(buf.as_slice());
+    /// let mut decoder = Decoder::new(&mut buf);
     /// assert_eq!(decoder.decode().unwrap(), Value::Bulk("Hello".to_string()));
     /// ```
-    pub fn new(reader: BufReader<R>) -> Self {
+    pub fn new(reader: &'a mut BufReader<R>) -> Self {
         Decoder {
             buf_bulk: false,
             reader: reader,
@@ -125,11 +126,12 @@ impl<R: Read> Decoder<R> {
     ///
     /// let value = Value::Bulk("Hello".to_string());
     /// let buf = value.encode();
-    /// let mut decoder = Decoder::with_buf_bulk(BufReader::new(buf.as_slice()));
+    /// let mut buf = BufReader::new(buf.as_slice());
+    /// let mut decoder = Decoder::with_buf_bulk(&mut buf);
     /// // Always decode "$" buffers to Value::BufBulk even if feed Value::Bulk buffers
     /// assert_eq!(decoder.decode().unwrap(), Value::BufBulk("Hello".to_string().into_bytes()));
     /// ```
-    pub fn with_buf_bulk(reader: BufReader<R>) -> Self {
+    pub fn with_buf_bulk(reader: &'a mut BufReader<R>) -> Self {
         Decoder {
             buf_bulk: true,
             reader: reader,
@@ -348,7 +350,8 @@ mod tests {
 
         // Single Decode
         for case in cases {
-            let mut decoder = Decoder::new(BufReader::new(case.data.as_slice()));
+            let mut buf = BufReader::new(case.data.as_slice());
+            let mut decoder = Decoder::new(&mut buf);
             assert_eq!(decoder.decode().unwrap(), case.want);
             assert!(decoder.decode().is_err());
         }
@@ -358,7 +361,8 @@ mod tests {
         for case in cases {
             all.extend_from_slice(case.data.as_slice());
         }
-        let mut decoder = Decoder::new(BufReader::new(all.as_slice()));
+        let mut buf = BufReader::new(all.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         for case in cases {
             assert_eq!(decoder.decode().unwrap(), case.want);
         }
@@ -465,7 +469,8 @@ mod tests {
               }];
 
         for case in cases {
-            let mut decoder = Decoder::with_buf_bulk(BufReader::new(case.data.as_slice()));
+            let mut buf = BufReader::new(case.data.as_slice());
+            let mut decoder = Decoder::with_buf_bulk(&mut buf);
             assert_eq!(decoder.decode().unwrap(), case.want);
             assert!(decoder.decode().is_err());
         }
@@ -475,7 +480,8 @@ mod tests {
         for case in cases {
             all.extend_from_slice(case.data.as_slice());
         }
-        let mut decoder = Decoder::with_buf_bulk(BufReader::new(all.as_slice()));
+        let mut buf = BufReader::new(all.as_slice());
+        let mut decoder = Decoder::with_buf_bulk(&mut buf);
         for case in cases {
             assert_eq!(decoder.decode().unwrap(), case.want);
         }
@@ -484,13 +490,15 @@ mod tests {
 
     #[test]
     fn struct_decoder_with_invalid_data() {
-        let buf: &[u8] = &[];
-        let mut decoder = Decoder::new(BufReader::new(buf));
+        let v = vec![];
+        let slice = v.as_slice();
+        let mut buf = BufReader::new(slice);
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
-
         let buf = Value::String("OK正".to_string()).encode();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = &mut BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert_eq!(decoder.decode().unwrap(),
                    Value::String("OK正".to_string()));
         assert!(decoder.decode().is_err());
@@ -498,42 +506,51 @@ mod tests {
         let mut buf = Value::String("OK正".to_string()).encode();
         // [43, 79, 75, 230, 173, 163, 13, 10]
         buf.remove(5);
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
 
         let buf = "$\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
         let buf = "$-2\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
         let buf = "&-1\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
         let buf = "$-1\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert_eq!(decoder.decode().unwrap(), Value::Null);
         assert!(decoder.decode().is_err());
 
         let buf = "$0\r\n\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert_eq!(decoder.decode().unwrap(), Value::Bulk("".to_string()));
         assert!(decoder.decode().is_err());
 
         let buf = "*3\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
         let buf = "*3\r\n$3\r\nfoo\r\n$-1\r\n".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
 
         let buf = "*3\r\n$3\r\nfoo\r\n$-1\r\n$3\r\nba".to_string().into_bytes();
-        let mut decoder = Decoder::new(BufReader::new(buf.as_slice()));
+        let mut buf = BufReader::new(buf.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert!(decoder.decode().is_err());
     }
 }

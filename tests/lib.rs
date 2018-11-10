@@ -201,7 +201,8 @@ fn struct_decoder() {
 
     // Single Decode
     for case in cases {
-        let mut decoder = Decoder::new(BufReader::new(case.data.as_slice()));
+        let mut buf = BufReader::new(case.data.as_slice());
+        let mut decoder = Decoder::new(&mut buf);
         assert_eq!(decoder.decode().unwrap(), case.want);
         assert!(decoder.decode().is_err());
     }
@@ -211,7 +212,8 @@ fn struct_decoder() {
     for case in cases {
         all.extend_from_slice(case.data.as_slice());
     }
-    let mut decoder = Decoder::new(BufReader::new(all.as_slice()));
+    let mut buf = BufReader::new(all.as_slice());
+    let mut decoder = Decoder::new(&mut buf);
     for case in cases {
         assert_eq!(decoder.decode().unwrap(), case.want);
     }
@@ -224,10 +226,8 @@ fn struct_decoder() {
         chaos.extend_from_slice(all.as_slice());
     }
     println!("8888888 {:?}", chaos.len());
-    let mut decoder = Decoder::new(BufReader::new(FakeNetIO {
-                                                      offset: 0,
-                                                      buf: chaos,
-                                                  }));
+    let mut buf = BufReader::new(FakeNetIO { offset: 0, buf: chaos });
+    let mut decoder = Decoder::new(&mut buf);
     for _ in 0..repeats {
         for case in cases {
             assert_eq!(decoder.decode().unwrap(), case.want);
